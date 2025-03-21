@@ -31,6 +31,8 @@ func commandHelp(commandMap map[string]cliCommand) error {
 	for _, command := range commandMap {
 		fmt.Printf("%s: %s\n", command.name, command.description)
 	}
+	fmt.Println("")
+
 	return nil
 }
 

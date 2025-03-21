@@ -4,67 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"internal/pokeapi/pokecache"
-	"io"
 	"math/rand"
 	"net/http"
 	"time"
 )
 
-type LocationArea struct {
-	Name string `json:"name"`
-}
-
-type LocationResponseBody struct {
-	Count    int            `json:"count"`
-	Next     string         `json:"next"`
-	Previous string         `json:"previous"`
-	Results  []LocationArea `json:"results"`
-}
-
-type Pokemon struct {
-	Name           string        `json:"name"`
-	BaseExperience int           `json:"base_experience"`
-	Height         int           `json:"height"`
-	Weight         int           `json:"weight"`
-	Stats          []PokemonStat `json:"stats"`
-	Types          []PokemonType `json:"types"`
-}
-
-type PokemonStat struct {
-	BaseStat int             `json:"base_stat"`
-	Effort   int             `json:"effort"`
-	Stat     PokemonStatType `json:"stat"`
-}
-
-type PokemonStatType struct {
-	Name string `json:"name"`
-}
-
-type PokemonType struct {
-	Type PokemonTypeDef `json:"type"`
-}
-
-type PokemonTypeDef struct {
-	Name string `json:"name"`
-}
-
-type PokemonEncounter struct {
-	Pokemon Pokemon `json:"pokemon"`
-}
-
-type ExplorationResponseBody struct {
-	PokemonEncounters []PokemonEncounter `json:"pokemon_encounters"`
-}
-
-type PokeApiClient struct {
-	httpClient http.Client
-	baseUrl    string
-	cache      pokecache.Cache
-}
-
 var source = rand.NewSource(time.Now().UnixNano())
 var randomizer = rand.New(source)
-var Pokedex = make(map[string]Pokemon)
+var pokedex = make(map[string]Pokemon)
 
 func NewClient() PokeApiClient {
 	return PokeApiClient{
@@ -100,18 +47,14 @@ func (pokeApiClient *PokeApiClient) GetLocationsFrom(pageUrl string) (LocationRe
 	}
 	defer res.Body.Close()
 
-	data, err := io.ReadAll(res.Body)
+	data, err := unmarshalJsonBodyIntoGivenStruct(res, &locations)
 	if err != nil {
 		return locations, err
 	}
 
 	pokeApiClient.cache.Add(url, data)
-	err = json.Unmarshal(data, &locations)
-	if err != nil {
-		return locations, err
-	}
 
-	return locations, nil
+	return locations, err
 }
 
 func (pokeApiClient *PokeApiClient) GetPokemonFromLocation(locationName string) (ExplorationResponseBody, error) {
@@ -134,16 +77,12 @@ func (pokeApiClient *PokeApiClient) GetPokemonFromLocation(locationName string) 
 	}
 	defer res.Body.Close()
 
-	data, err := io.ReadAll(res.Body)
+	data, err := unmarshalJsonBodyIntoGivenStruct(res, &exploration)
 	if err != nil {
 		return exploration, err
 	}
 
 	pokeApiClient.cache.Add(url, data)
-	err = json.Unmarshal(data, &exploration)
-	if err != nil {
-		return exploration, err
-	}
 
 	return exploration, nil
 }
@@ -158,12 +97,7 @@ func (pokeApiClient *PokeApiClient) CatchPokemon(pokemonName string) (bool, erro
 	}
 	defer res.Body.Close()
 
-	data, err := io.ReadAll(res.Body)
-	if err != nil {
-		return false, err
-	}
-
-	err = json.Unmarshal(data, &pokemon)
+	_, err = unmarshalJsonBodyIntoGivenStruct(res, &pokemon)
 	if err != nil {
 		return false, err
 	}
@@ -171,7 +105,7 @@ func (pokeApiClient *PokeApiClient) CatchPokemon(pokemonName string) (bool, erro
 	randomChance := randomizer.Intn(300)
 
 	if randomChance < pokemon.BaseExperience {
-		Pokedex[pokemonName] = pokemon
+		pokedex[pokemonName] = pokemon
 		return true, nil
 	}
 
@@ -179,34 +113,10 @@ func (pokeApiClient *PokeApiClient) CatchPokemon(pokemonName string) (bool, erro
 }
 
 func Inspect(pokemonName string) {
-	pokemon, ok := Pokedex[pokemonName]
+	pokemon, ok := pokedex[pokemonName]
 	if !ok {
 		fmt.Printf("You have not caught %s!\n", pokemonName)
 		return
 	}
 	pokemon.printDetails()
-}
-
-func (pokemon *Pokemon) printDetails() {
-	fmt.Printf("Name: %s\n", pokemon.Name)
-	fmt.Printf("Height: %d\n", pokemon.Height)
-	fmt.Printf("Weight: %d\n", pokemon.Weight)
-
-	fmt.Println("Stats:")
-	for _, stat := range pokemon.Stats {
-		statValue := stat.BaseStat + stat.Effort
-		fmt.Printf("  -%s: %d\n", stat.Stat.Name, statValue)
-	}
-
-	fmt.Println("Types:")
-	for _, pokeType := range pokemon.Types {
-		fmt.Printf("  - %s\n", pokeType.Type.Name)
-	}
-}
-
-func PrintPokedex() {
-	fmt.Println("Your Pokedex:")
-	for key := range Pokedex {
-		fmt.Printf("  - %s\n", key)
-	}
 }
